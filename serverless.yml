@@ -1,0 +1,51 @@
+# Happy Coding!
+
+service: hello-ellenex
+app: hello-ellenex
+tenant: mrzkhd
+frameworkVersion: ">=1.28.0 <2.0.0"
+
+provider:
+  name: aws
+  runtime: go1.x
+  iamRoleStatements:
+      # ...
+      - Effect: "Allow"
+        Action:
+          - "dynamodb:*"
+        Resource: "*"
+#        Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/deviceTable"
+
+package:
+ exclude:
+   - ./**
+ include:
+   - ./bin/**
+functions:
+  postReq:
+    handler: bin/req1
+    events:
+      - http:
+          path: api/devices
+          method: post
+  getReq:
+    handler: bin/req2
+    events:
+      - http:
+          path: api/devices/{id}
+          method: get
+resources:
+  Resources:
+    deviceTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: deviceTable
+        AttributeDefinitions:
+          - AttributeName: id #The only attributes that should be defined here are those that will be used as keys.
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
