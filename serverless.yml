@@ -34,6 +34,12 @@ functions:
       - http:
           path: api/devices/{id}
           method: get
+  delAll:
+    handler: bin/req3
+    events:
+      - http:
+          path: api/devices/
+          method: delete
 resources:
   Resources:
     deviceTable:

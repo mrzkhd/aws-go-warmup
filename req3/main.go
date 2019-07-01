@@ -7,10 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/aws"
-	"encoding/json"
 	"os"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
 const (
@@ -37,81 +35,25 @@ type internalError struct {
 	message string
 }
 
-type Device struct {
-	Id          string `json:"id"`
-	DeviceModel string `json:"device_model"`
-	Name        string `json:"name"`
-	Note        string `json:"note"`
-	Serial      string `json:"serial"`
-}
-
 var svc *dynamodb.DynamoDB
 
 func Handler(request events.APIGatewayProxyRequest) (res events.APIGatewayProxyResponse, err error) {
 
 	defer handlerRecover(&res)
 
-	dev := getDevice(request) // unmarshalling
-
-	validationMsg, validationErr := validationRequest(dev) //check existence of all fields
-
-	if validationErr {
-		return getResponse(RESPONSE_BAD_REQUEST_CODE, validationMsg), nil
-	}
-
 	initDdb() //create service client of ddb
 
-	if !alreadyExist(dev) {
-		saveToDdb(dev)
-	} else {
-		panic(internalError{RESPONSE_BAD_REQUEST_CODE, RESPONSE_DDB_DATA_ALREADY_EXIST_MSG})
-	}
+	deleteAll()
 
 	return getResponse(RESPONSE_CREATED_CODE, "Done."), nil
 
 }
+func deleteAll() {
 
-func alreadyExist(device Device) bool {
-	dev := loadFromDdb(device.Id)
-	if (dev == Device{} && reflect.DeepEqual(Device{}, dev)) {
-		return false
-	}
-	return true
-}
-
-func saveToDdb(dev Device) {
-
-	// Write to DynamoDB
-	item, _ := dynamodbattribute.MarshalMap(dev)
-	input := &dynamodb.PutItemInput{
-		Item:      item,
+	input := &dynamodb.DeleteTableInput{
 		TableName: aws.String(TABLE_NAME),
 	}
-
-	if _, err := svc.PutItem(input); err != nil {
-		panic(internalError{RESPONSE_INTERNAL_SERVER_ERROR_CODE, err.Error()})
-	}
-}
-
-func loadFromDdb(key string) (Device) {
-
-	result, err := svc.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String(TABLE_NAME),
-		Key: map[string]*dynamodb.AttributeValue{
-			"id": {S: aws.String(key)},
-		},
-	})
-	if err != nil {
-		panic(internalError{RESPONSE_INTERNAL_SERVER_ERROR_CODE, err.Error()})
-	}
-
-	device := Device{}
-	if err := dynamodbattribute.UnmarshalMap(result.Item, &device); err != nil {
-		panic(internalError{RESPONSE_INTERNAL_SERVER_ERROR_CODE, RESPONSE_DDB_LOAD_EXCEPTION_MSG})
-	}
-
-	return device
-
+	svc.DeleteTable(input)
 }
 
 func initDdb() {
@@ -125,35 +67,6 @@ func initDdb() {
 	} else {
 		svc = dynamodb.New(session) // Create DynamoDB client
 	}
-
-}
-
-func getDevice(request events.APIGatewayProxyRequest) (Device) {
-	var device Device
-
-	if (reflect.DeepEqual(request, events.APIGatewayProxyRequest{})) || (len(request.Body) < 1) {
-		panic(internalError{RESPONSE_BAD_REQUEST_CODE, RESPONSE_BAD_REQUEST_MSG})
-	}
-	err := json.Unmarshal([]byte(request.Body), &device)
-
-	if err != nil {
-		panic(internalError{RESPONSE_BAD_REQUEST_CODE, RESPONSE_BAD_REQUEST_MSG})
-	} else {
-		return device
-	}
-
-}
-
-func validationRequest(device Device) (msg string, error bool) {
-
-	devVal := reflect.ValueOf(device)
-
-	for i := 0; i < devVal.NumField(); i++ {
-		if devVal.Field(i).Len() == 0 {
-			return MSG_MISSING_FIELD + devVal.Type().Field(i).Name, true
-		}
-	}
-	return "", false
 
 }
 
@@ -187,15 +100,6 @@ func handlerRecover(res *events.APIGatewayProxyResponse) {
 	//res.Headers = map[string]string{"Content-Type": string("application/json")}
 
 }
-
-func deleteAll() {
-
-	input := &dynamodb.DeleteTableInput{
-		TableName: aws.String(TABLE_NAME),
-	}
-	svc.DeleteTable(input)
-}
-
 
 func main() {
 	lambda.Start(Handler)
